@@ -1,53 +1,43 @@
 """
-Minimal FastAPI server for SAM 3 image inference.
+Minimal Flask server for SAM 3 image inference.
 
 Start with:
-    uv run uvicorn serve:app --host 0.0.0.0 --port 8000
+    uv run python serve.py
 """
 
 import io
-import tempfile
-from contextlib import asynccontextmanager
-from pathlib import Path
+import sys
 
 import torch
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import JSONResponse
 from PIL import Image
 from sam3.model.box_ops import box_xyxy_to_xywh
 from sam3.model.sam3_image_processor import Sam3Processor
 from sam3.model_builder import build_sam3_image_model
 from sam3.train.masks_ops import rle_encode
 
-model_state: dict = {}
+print("Loading SAM 3 model...", flush=True)
+model = build_sam3_image_model()
+processor = Sam3Processor(model)
+print("Model loaded.", flush=True)
 
+from flask import Flask, jsonify, request
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("Loading SAM 3 model...")
-    model = build_sam3_image_model()
-    processor = Sam3Processor(model)
-    model_state["processor"] = processor
-    print("Model loaded.")
-    yield
-    model_state.clear()
-
-
-app = FastAPI(title="SAM 3 Inference", lifespan=lifespan)
+app = Flask(__name__)
 
 
 @app.post("/predict")
-async def predict(
-    image: UploadFile = File(...),
-    prompt: str = Form(...),
-    score_threshold: float = Form(0.0),
-):
+def predict():
     """Run SAM 3 segmentation on an uploaded image with a text prompt."""
-    contents = await image.read()
-    pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
+    if "image" not in request.files:
+        return jsonify({"error": "missing 'image' file"}), 400
+    prompt = request.form.get("prompt")
+    if not prompt:
+        return jsonify({"error": "missing 'prompt' field"}), 400
+    score_threshold = float(request.form.get("score_threshold", 0.0))
+
+    pil_image = Image.open(request.files["image"].stream).convert("RGB")
     orig_w, orig_h = pil_image.size
 
-    processor: Sam3Processor = model_state["processor"]
     with torch.autocast("cuda", dtype=torch.bfloat16):
         inference_state = processor.set_image(pil_image)
         inference_state = processor.set_text_prompt(
@@ -58,7 +48,6 @@ async def predict(
     scores = inference_state["scores"]
     masks = inference_state["masks"]
 
-    # Normalize boxes to [0, 1] and convert to xywh
     boxes_norm = torch.stack(
         [
             boxes[:, 0] / orig_w,
@@ -70,13 +59,11 @@ async def predict(
     )
     boxes_xywh = box_xyxy_to_xywh(boxes_norm).tolist()
 
-    # RLE-encode masks
     rle_masks = rle_encode(masks.squeeze(1))
     rle_masks = [m["counts"] for m in rle_masks]
 
     scores_list = scores.tolist()
 
-    # Filter by score threshold and sort descending
     results = sorted(
         [
             {"box": b, "mask_rle": m, "score": s}
@@ -87,8 +74,8 @@ async def predict(
         reverse=True,
     )
 
-    return JSONResponse(
-        content={
+    return jsonify(
+        {
             "image_width": orig_w,
             "image_height": orig_h,
             "prompt": prompt,
@@ -99,5 +86,9 @@ async def predict(
 
 
 @app.get("/health")
-async def health():
-    return {"status": "ok", "model_loaded": "processor" in model_state}
+def health():
+    return jsonify({"status": "ok", "model_loaded": True})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, threaded=False)

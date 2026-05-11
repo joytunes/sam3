@@ -97,9 +97,7 @@ veval = [
     "yt-dlp",
 ]
 serve = [
-    "fastapi",
-    "uvicorn[standard]",
-    "python-multipart",
+    "flask",
 ]
 
 [project.urls]
