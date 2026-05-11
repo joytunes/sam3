@@ -96,6 +96,11 @@ veval = [
     "scipy",
     "yt-dlp",
 ]
+serve = [
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/facebookresearch/sam3"
