@@ -48,8 +48,11 @@ async def predict(
     orig_w, orig_h = pil_image.size
 
     processor: Sam3Processor = model_state["processor"]
-    inference_state = processor.set_image(pil_image)
-    inference_state = processor.set_text_prompt(state=inference_state, prompt=prompt)
+    with torch.autocast("cuda", dtype=torch.bfloat16):
+        inference_state = processor.set_image(pil_image)
+        inference_state = processor.set_text_prompt(
+            state=inference_state, prompt=prompt
+        )
 
     boxes = inference_state["boxes"]
     scores = inference_state["scores"]
