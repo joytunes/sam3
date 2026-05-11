@@ -7,8 +7,10 @@ jobs:
   ufmt_check:
     runs-on: ubuntu-latest
     steps:
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
       - name: Install ruff-api
-        run: pip install ruff-api==0.1.0
+        run: uv pip install --system ruff-api==0.1.0
       - name: Check formatting
         uses: omnilib/ufmt@action-v1
         with:

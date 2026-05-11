@@ -7,7 +7,7 @@ name = "sam3"
 dynamic = ["version"]
 description = "SAM3 (Segment Anything Model 3) implementation"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 license = {file = "LICENSE"}
 authors = [
     {name = "Meta AI Research"}
@@ -17,14 +17,15 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+    "torch==2.10.0",
+    "torchvision",
+    "einops",
+    "pycocotools",
+    "psutil",
     "timm>=1.0.17",
     "numpy>=1.26,<2",
     "tqdm",
@@ -33,6 +34,8 @@ dependencies = [
     "iopath>=0.1.10",
     "typing_extensions",
     "huggingface_hub",
+    # model_builder imports pkg_resources, which was removed in setuptools 81+.
+    "setuptools<81",
 ]
 
 [project.optional-dependencies]
@@ -47,7 +50,6 @@ dev = [
     "yt-dlp",
     "pandas",
     "opencv-python",
-    "pycocotools",
     "numba",
     "python-rapidjson",
 ]
@@ -58,12 +60,19 @@ notebooks = [
     "ipywidgets",
     "ipycanvas",
     "ipympl",
-    "pycocotools",
     "decord",
     "opencv-python",
-    "einops",
+    "pandas",
     "scikit-image",
     "scikit-learn",
+]
+eval = [
+    "scipy",
+]
+fast-inference = [
+    "ninja",
+    "flash-attn-3",
+    "cc-torch",
 ]
 train = [
     "hydra-core",
@@ -77,10 +86,36 @@ train = [
     "scikit-image",
     "scikit-learn",
 ]
+veval = [
+    "jupyter",
+    "notebook",
+    "matplotlib",
+    "opencv-python",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "yt-dlp",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/facebookresearch/sam3"
 "Bug Tracker" = "https://github.com/facebookresearch/sam3/issues"
+
+[tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+required-version = ">=0.11.8"
+no-build-isolation-package = ["cc-torch", "flash-attn-3"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+flash-attn-3 = { index = "pytorch-cu128" }
+cc-torch = { git = "https://github.com/ronghanghu/cc_torch.git" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [tool.setuptools.packages.find]
 include = ["sam3*"]
@@ -94,7 +129,7 @@ version = {attr = "sam3.__version__"}
 
 [tool.black]
 line-length = 88
-target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
+target-version = ['py312']
 include = '\.pyi?$'
 
 [tool.isort]

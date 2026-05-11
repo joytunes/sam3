@@ -12,7 +12,7 @@
 ## Environment
 Install the SA-Co/VEVal required environment
 ```
-pip install -e ".[veval]"
+uv sync --extra veval
 ```
 This will allow us to run:
 * `scripts/eval/veval/saco_yt1b_downloader.py` preparing frames for SA-Co/VEval - YT-Temporal-1B

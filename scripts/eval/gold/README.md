@@ -32,6 +32,14 @@ There are two image sources for the evaluation dataset: MetaCLIP and SA-1B.
 
 ## Run evaluation
 
+Install the evaluator dependencies with:
+
+```bash
+uv sync --extra eval
+```
+
+Use `uv sync --extra train` as well when running the SAM3 inference configurations below.
+
 The official metric for SA-Co/Gold is cgF1. Please refer to the SAM3 paper for details.
 Our evaluator inherits from the official COCO evaluator, with some modifications. Recall that in the Gold subset, there are three annotations for each datapoint. We evaluate against each of them and picks the most favorable (oracle setting). It has minimal dependency (pycocotools, numpy and scipy), to help reusability in other projects. In this section we provide several pointers to run evaluation of SAM3 or third-party models.
 
