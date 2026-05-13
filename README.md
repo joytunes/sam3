@@ -160,6 +160,41 @@ response = video_predictor.handle_request(
 output = response["outputs"]
 ```
 
+### Local Flask API
+
+The repository includes a minimal Flask server for image inference. Start it with:
+
+```bash
+uv run python serve.py
+```
+
+Send requests to `POST /predict` as `multipart/form-data` with an `image` file and at least one prompt field. Use `prompt` for text prompting:
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -F image=@image.jpg \
+  -F prompt="red car"
+```
+
+Use `bbox` for a bounding-box prompt or `exemplar` for an exemplar box. Both fields are JSON arrays of four numbers. The default format is `xywh` in image pixel coordinates; set `bbox_format` or `exemplar_format` to `xyxy` or `cxcywh` when needed.
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -F image=@image.jpg \
+  -F bbox='[120, 80, 60, 45]' \
+  -F bbox_format=xywh
+```
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -F image=@image.jpg \
+  -F prompt="same kind of object" \
+  -F exemplar='[120, 80, 180, 125]' \
+  -F exemplar_format=xyxy
+```
+
+You can combine `prompt`, `bbox`, and `exemplar` in one request. Optionally pass `score_threshold` to filter lower-confidence predictions.
+
 ## Examples
 
 The `examples` directory contains notebooks demonstrating how to use SAM3 with

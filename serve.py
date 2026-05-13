@@ -5,11 +5,10 @@ Start with:
     uv run python serve.py
 """
 
-import io
 import json
-import sys
 
 import torch
+from flask import Flask, jsonify, request
 from PIL import Image
 from sam3.model.box_ops import box_xyxy_to_xywh
 from sam3.model.sam3_image_processor import Sam3Processor
@@ -21,7 +20,6 @@ model = build_sam3_image_model()
 processor = Sam3Processor(model)
 print("Model loaded.", flush=True)
 
-from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -56,6 +54,90 @@ def _format_predictions(inference_state, orig_w, orig_h, score_threshold):
         key=lambda r: r["score"],
         reverse=True,
     )
+
+
+def _json_form_field(form, name):
+    raw_value = form.get(name)
+    if not raw_value:
+        return None
+
+    try:
+        return json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"'{name}' must be valid JSON") from exc
+
+
+def _parse_box(box, field_name):
+    if not isinstance(box, list) or len(box) != 4:
+        raise ValueError(f"'{field_name}' must be a JSON array of four numbers")
+
+    try:
+        return [float(value) for value in box]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"'{field_name}' must contain only numbers") from exc
+
+
+def _box_to_normalized_cxcywh(box, box_format, orig_w, orig_h, field_name):
+    if box_format == "xywh":
+        x, y, w, h = box
+        cx = x + w / 2
+        cy = y + h / 2
+    elif box_format == "xyxy":
+        x0, y0, x1, y1 = box
+        cx = (x0 + x1) / 2
+        cy = (y0 + y1) / 2
+        w = x1 - x0
+        h = y1 - y0
+    elif box_format == "cxcywh":
+        cx, cy, w, h = box
+    else:
+        raise ValueError(f"'{field_name}_format' must be one of: xywh, xyxy, cxcywh")
+
+    return [cx / orig_w, cy / orig_h, w / orig_w, h / orig_h]
+
+
+def _parse_visual_prompts(form, orig_w, orig_h):
+    visual_prompts = []
+
+    for field_name in ("bbox", "exemplar"):
+        raw_box = _json_form_field(form, field_name)
+        if raw_box is None:
+            continue
+
+        box_format = form.get(f"{field_name}_format", "xywh").lower()
+        box = _parse_box(raw_box, field_name)
+        visual_prompts.append(
+            {
+                "type": field_name,
+                "box": box,
+                "box_format": box_format,
+                "normalized_cxcywh": _box_to_normalized_cxcywh(
+                    box=box,
+                    box_format=box_format,
+                    orig_w=orig_w,
+                    orig_h=orig_h,
+                    field_name=field_name,
+                ),
+            }
+        )
+
+    return visual_prompts
+
+
+def _apply_prompts(inference_state, prompt, visual_prompts):
+    if prompt:
+        inference_state = processor.set_text_prompt(
+            state=inference_state, prompt=prompt
+        )
+
+    for visual_prompt in visual_prompts:
+        inference_state = processor.add_geometric_prompt(
+            state=inference_state,
+            box=visual_prompt["normalized_cxcywh"],
+            label=True,
+        )
+
+    return inference_state
 
 
 def _parse_components(raw_components):
@@ -96,21 +178,29 @@ def _parse_components(raw_components):
 
 @app.post("/predict")
 def predict():
-    """Run SAM 3 segmentation on an uploaded image with a text prompt."""
+    """Run SAM 3 segmentation on an uploaded image with text or visual prompts."""
     if "image" not in request.files:
         return jsonify({"error": "missing 'image' file"}), 400
     prompt = request.form.get("prompt")
-    if not prompt:
-        return jsonify({"error": "missing 'prompt' field"}), 400
     score_threshold = float(request.form.get("score_threshold", 0.0))
 
     pil_image = Image.open(request.files["image"].stream).convert("RGB")
     orig_w, orig_h = pil_image.size
 
+    try:
+        visual_prompts = _parse_visual_prompts(request.form, orig_w, orig_h)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if not prompt and not visual_prompts:
+        return jsonify({"error": "missing 'prompt', 'bbox', or 'exemplar' field"}), 400
+
     with torch.autocast("cuda", dtype=torch.bfloat16):
         inference_state = processor.set_image(pil_image)
-        inference_state = processor.set_text_prompt(
-            state=inference_state, prompt=prompt
+        inference_state = _apply_prompts(
+            inference_state=inference_state,
+            prompt=prompt,
+            visual_prompts=visual_prompts,
         )
 
     results = _format_predictions(
@@ -125,6 +215,7 @@ def predict():
             "image_width": orig_w,
             "image_height": orig_h,
             "prompt": prompt,
+            "visual_prompts": visual_prompts,
             "num_predictions": len(results),
             "predictions": results,
         }
