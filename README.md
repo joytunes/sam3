@@ -168,32 +168,29 @@ The repository includes a minimal Flask server for image inference. Start it wit
 uv run python serve.py
 ```
 
-Send requests to `POST /predict` as `multipart/form-data` with an `image` file and at least one prompt field. Use `prompt` for text prompting:
+Send requests to `POST /predict` as `multipart/form-data` with an `image` file and a `prompts` JSON object. The image embedding is computed once, then each keyed prompt entry is applied independently and returned under the same key.
 
 ```bash
 curl -X POST http://localhost:8000/predict \
   -F image=@image.jpg \
-  -F prompt="red car"
+  -F prompts='{
+    "car": {"text": "red car"},
+    "wheel": {"text": "wheel", "bbox": [120, 80, 60, 45], "bbox_format": "xywh"}
+  }'
 ```
 
-Use `bbox` for a bounding-box prompt or `exemplar` for an exemplar box. Both fields are JSON arrays of four numbers. The default format is `xywh` in image pixel coordinates; set `bbox_format` or `exemplar_format` to `xyxy` or `cxcywh` when needed.
+Each `prompts` entry may include a text prompt (`text`, or `prompt`) and/or a geometric box prompt using `bbox`, `geometric_prompt`, or `geometric`. Box prompts are JSON arrays of four numbers. The default format is `xywh` in image pixel coordinates; set `bbox_format` or `geometric_format` to `xyxy` or `cxcywh` when needed.
 
 ```bash
 curl -X POST http://localhost:8000/predict \
   -F image=@image.jpg \
-  -F bbox='[120, 80, 60, 45]' \
-  -F bbox_format=xywh
+  -F prompts='{
+    "same_kind": {"prompt": "same kind of object", "geometric": [120, 80, 180, 125], "geometric_format": "xyxy"}
+  }' \
+  -F score_threshold=0.25
 ```
 
-```bash
-curl -X POST http://localhost:8000/predict \
-  -F image=@image.jpg \
-  -F prompt="same kind of object" \
-  -F exemplar='[120, 80, 180, 125]' \
-  -F exemplar_format=xyxy
-```
-
-You can combine `prompt`, `bbox`, and `exemplar` in one request. Optionally pass `score_threshold` to filter lower-confidence predictions.
+The response contains `image_width`, `image_height`, and a `results` object keyed like the request. Optionally pass `score_threshold` to filter lower-confidence predictions.
 
 ## Examples
 
