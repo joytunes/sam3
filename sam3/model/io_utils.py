@@ -442,7 +442,13 @@ class TorchCodecDecoder:
     which are not supported by `torchcodec.decoders.SimpleVideoDecoder` yet.
     """
 
-    def __init__(self, source, dimension_order="NCHW", device="cpu", num_threads=1):
+    def __init__(
+        self,
+        source: Union[str, bytes],
+        dimension_order: str = "NCHW",
+        device: str = "cpu",
+        num_threads: int = 1,
+    ) -> None:
         from torchcodec import _core as core
 
         self._source = source  # hold a reference to the source to prevent it from GC
@@ -512,7 +518,7 @@ class FIFOLock:
             self._waiters.get()
             self._condition.notify_all()
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         self.acquire()
 
     def __exit__(
