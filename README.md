@@ -165,8 +165,9 @@ output = response["outputs"]
 The repository includes a minimal Flask server for image inference. Start it with:
 
 ```bash
-uv run python serve.py
+uv run serve.py
 ```
+
 
 Send requests to `POST /predict` as `multipart/form-data` with an `image` file and a `prompts` JSON object. The image embedding is computed once, then each keyed prompt entry is applied independently and returned under the same key.
 

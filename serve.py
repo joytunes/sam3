@@ -2,7 +2,7 @@
 Minimal Flask server for SAM 3 image inference.
 
 Start with:
-    uv run python serve.py
+    uv run serve.py
 
 Exposes a single endpoint:
 
@@ -26,19 +26,32 @@ object keyed by the same keys as the request (insertion order preserved).
 import json
 import math
 from collections import OrderedDict
+from contextlib import nullcontext
 
 import torch
 from flask import Flask, jsonify, request
 from PIL import Image, UnidentifiedImageError
 from sam3.model.box_ops import box_xyxy_to_xywh
 from sam3.model.sam3_image_processor import Sam3Processor
-from sam3.model_builder import build_sam3_image_model
+from sam3.model_builder import DEFAULT_DEVICE, build_sam3_image_model
 from sam3.train.masks_ops import rle_encode
 
+
 print("Loading SAM 3 model...", flush=True)
-model = build_sam3_image_model()
-processor = Sam3Processor(model)
+try:
+    model = build_sam3_image_model(device=DEFAULT_DEVICE)
+except RuntimeError as exc:
+    if " is gated." in str(exc):
+        raise SystemExit(str(exc)) from None
+    raise
+processor = Sam3Processor(model, device=DEFAULT_DEVICE)
 print("Model loaded.", flush=True)
+
+
+def _inference_context():
+    if DEFAULT_DEVICE == "cuda":
+        return torch.autocast("cuda", dtype=torch.bfloat16)
+    return nullcontext()
 
 
 app = Flask(__name__, static_folder=None)
@@ -243,7 +256,7 @@ def predict():
 
     results = OrderedDict()
 
-    with torch.autocast("cuda", dtype=torch.bfloat16):
+    with _inference_context():
         inference_state = processor.set_image(pil_image)
 
         for key, entry in parsed_entries:
