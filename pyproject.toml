@@ -7,7 +7,7 @@ name = "sam3"
 dynamic = ["version"]
 description = "SAM3 (Segment Anything Model 3) implementation"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 license = {file = "LICENSE"}
 authors = [
     {name = "Meta AI Research"}
@@ -70,9 +70,9 @@ eval = [
     "scipy",
 ]
 fast-inference = [
-    "ninja",
-    "flash-attn-3",
-    "cc-torch",
+    "ninja; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "flash-attn-3; sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "cc-torch; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 train = [
     "hydra-core",
@@ -105,20 +105,29 @@ serve = [
 "Bug Tracker" = "https://github.com/facebookresearch/sam3/issues"
 
 [tool.uv]
-environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
 required-version = ">=0.11.8"
-no-build-isolation-package = ["cc-torch", "flash-attn-3"]
 
+dependency-metadata = [
+    { name = "cc-torch", version = "0.2", requires-dist = ["torch"] },
+]
 [tool.uv.sources]
-torch = { index = "pytorch-cu128" }
-torchvision = { index = "pytorch-cu128" }
-flash-attn-3 = { index = "pytorch-cu128" }
+torch = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+]
+torchvision = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" },
+]
+flash-attn-3 = { index = "pytorch-cu128", marker = "sys_platform == 'linux' and platform_machine == 'x86_64'" }
 cc-torch = { git = "https://github.com/ronghanghu/cc_torch.git" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
+
+[tool.uv.extra-build-dependencies]
+cc-torch = ["setuptools", "torch"]
+flash-attn-3 = ["setuptools", "torch"]
 
 [tool.setuptools.packages.find]
 include = ["sam3*"]

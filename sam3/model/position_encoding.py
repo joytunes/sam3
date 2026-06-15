@@ -22,6 +22,7 @@ class PositionEmbeddingSine(nn.Module):
         normalize: bool = True,
         scale: Optional[float] = None,
         precompute_resolution: Optional[int] = None,
+        precompute_device: str = "cpu",
     ):
         super().__init__()
         assert num_pos_feats % 2 == 0, "Expecting even model width"
@@ -51,8 +52,9 @@ class PositionEmbeddingSine(nn.Module):
                 (int(precompute_resolution // 28), int(precompute_resolution // 28)),
                 (precompute_resolution // 32, precompute_resolution // 32),
             ]
+            device = precompute_device
             for size in precompute_sizes:
-                tensors = torch.zeros((1, 1) + size, device="cuda")
+                tensors = torch.zeros((1, 1) + size, device=device)
                 self.forward(tensors)
                 # further clone and detach it in the cache (just to be safe)
                 self.cache[size] = self.cache[size].clone().detach()

@@ -9,6 +9,7 @@ import pkg_resources
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
+from huggingface_hub.errors import GatedRepoError
 from iopath.common.file_io import g_pathmgr
 from sam3.model.decoder import (
     DecoupledTransformerDecoderLayerv2,
@@ -53,17 +54,20 @@ from sam3.sam.transformer import RoPEAttention
 # Setup TensorFloat-32 for Ampere GPUs if available
 def _setup_tf32() -> None:
     """Enable TensorFloat-32 for Ampere GPUs if available."""
-    if torch.cuda.is_available():
+    if DEFAULT_DEVICE == "cuda":
         device_props = torch.cuda.get_device_properties(0)
         if device_props.major >= 8:
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
 
 
+DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
 _setup_tf32()
 
 
-def _create_position_encoding(precompute_resolution=None):
+def _create_position_encoding(precompute_resolution=None, device=DEFAULT_DEVICE):
     """Create position encoding for visual backbone."""
     return PositionEmbeddingSine(
         num_pos_feats=256,
@@ -71,6 +75,7 @@ def _create_position_encoding(precompute_resolution=None):
         scale=None,
         temperature=10000,
         precompute_resolution=precompute_resolution,
+        precompute_device=device,
     )
 
 
@@ -162,7 +167,9 @@ def _create_transformer_encoder(use_fa3=False) -> TransformerEncoderFusion:
     return encoder
 
 
-def _create_transformer_decoder(use_fa3=False) -> TransformerDecoder:
+def _create_transformer_decoder(
+    use_fa3=False, device=DEFAULT_DEVICE
+) -> TransformerDecoder:
     """Create transformer decoder with its layer."""
     decoder_layer = TransformerDecoderLayer(
         activation="relu",
@@ -196,6 +203,7 @@ def _create_transformer_decoder(use_fa3=False) -> TransformerDecoder:
         stride=14,
         use_act_checkpoint=True,
         presence_token=True,
+        coord_cache_device=device,
     )
     return decoder
 
@@ -510,11 +518,13 @@ def _create_text_encoder(bpe_path: str) -> VETextEncoder:
 
 
 def _create_vision_backbone(
-    compile_mode=None, enable_inst_interactivity=True
+    compile_mode=None, enable_inst_interactivity=True, device=DEFAULT_DEVICE
 ) -> Sam3DualViTDetNeck:
     """Create SAM3 visual backbone with ViT and neck."""
     # Position encoding
-    position_encoding = _create_position_encoding(precompute_resolution=1008)
+    position_encoding = _create_position_encoding(
+        precompute_resolution=1008, device=device
+    )
     # ViT backbone
     vit_backbone: ViT = _create_vit_backbone(compile_mode=compile_mode)
     vit_neck: Sam3DualViTDetNeck = _create_vit_neck(
@@ -527,11 +537,13 @@ def _create_vision_backbone(
 
 
 def _create_sam3_transformer(
-    has_presence_token: bool = True, use_fa3: bool = False
+    has_presence_token: bool = True, use_fa3: bool = False, device=DEFAULT_DEVICE
 ) -> TransformerWrapper:
     """Create SAM3 transformer encoder and decoder."""
     encoder: TransformerEncoderFusion = _create_transformer_encoder(use_fa3=use_fa3)
-    decoder: TransformerDecoder = _create_transformer_decoder(use_fa3=use_fa3)
+    decoder: TransformerDecoder = _create_transformer_decoder(
+        use_fa3=use_fa3, device=device
+    )
 
     return TransformerWrapper(encoder=encoder, decoder=decoder, d_model=256)
 
@@ -572,7 +584,7 @@ def _setup_device_and_mode(model, device, eval_mode):
 
 def build_sam3_image_model(
     bpe_path=None,
-    device="cuda" if torch.cuda.is_available() else "cpu",
+    device=DEFAULT_DEVICE,
     eval_mode=True,
     checkpoint_path=None,
     load_from_HF=True,
@@ -603,7 +615,9 @@ def build_sam3_image_model(
     # Create visual components
     compile_mode = "default" if compile else None
     vision_encoder = _create_vision_backbone(
-        compile_mode=compile_mode, enable_inst_interactivity=enable_inst_interactivity
+        compile_mode=compile_mode,
+        enable_inst_interactivity=enable_inst_interactivity,
+        device=device,
     )
 
     # Create text components
@@ -613,7 +627,7 @@ def build_sam3_image_model(
     backbone = _create_vl_backbone(vision_encoder, text_encoder)
 
     # Create transformer components
-    transformer = _create_sam3_transformer()
+    transformer = _create_sam3_transformer(device=device)
 
     # Create dot product scoring
     dot_prod_scoring = _create_dot_product_scoring()
@@ -668,8 +682,13 @@ def download_ckpt_from_hf(version="sam3"):
         repo_id = "facebook/sam3"
         ckpt_name = "sam3.pt"
         cfg_name = "config.json"
-    _ = hf_hub_download(repo_id=repo_id, filename=cfg_name)
-    checkpoint_path = hf_hub_download(repo_id=repo_id, filename=ckpt_name)
+    try:
+        _ = hf_hub_download(repo_id=repo_id, filename=cfg_name)
+        checkpoint_path = hf_hub_download(repo_id=repo_id, filename=ckpt_name)
+    except GatedRepoError as exc:
+        raise RuntimeError(
+            f"{repo_id} is gated. Run `hf auth login` with accepted access."
+        ) from exc
     return checkpoint_path
 
 
@@ -681,7 +700,7 @@ def build_sam3_video_model(
     geo_encoder_use_img_cross_attn: bool = True,
     strict_state_dict_loading: bool = True,
     apply_temporal_disambiguation: bool = True,
-    device="cuda" if torch.cuda.is_available() else "cpu",
+    device=DEFAULT_DEVICE,
     compile=False,
 ) -> Sam3VideoInferenceWithInstanceInteractivity:
     """
@@ -941,7 +960,7 @@ def build_sam3_multiplex_video_model(
     use_fa3: bool = False,
     use_rope_real: bool = False,
     strict_state_dict_loading: bool = True,
-    device="cuda" if torch.cuda.is_available() else "cpu",
+    device=DEFAULT_DEVICE,
     compile=False,
 ):
     """
