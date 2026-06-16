@@ -5,6 +5,8 @@
 import os
 from typing import Optional
 
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+
 import pkg_resources
 import torch
 import torch.nn as nn
@@ -61,7 +63,13 @@ def _setup_tf32() -> None:
             torch.backends.cudnn.allow_tf32 = True
 
 
-DEFAULT_DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DEFAULT_DEVICE = (
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
+    else "cpu"
+)
 
 
 _setup_tf32()

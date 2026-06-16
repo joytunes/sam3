@@ -10,7 +10,7 @@ addmm_act_op = torch.ops.aten._addmm_activation
 def addmm_act(activation, linear, mat1):
     if torch.is_grad_enabled():
         raise ValueError("Expected grad to be disabled.")
-    if not mat1.is_cuda:
+    if mat1.device.type == "mps":
         x = linear(mat1)
         if activation in [torch.nn.functional.relu, torch.nn.ReLU]:
             return torch.nn.functional.relu(x)
