@@ -25,8 +25,11 @@ object keyed by the same keys as the request (insertion order preserved).
 
 import json
 import math
+import os
 from collections import OrderedDict
 from contextlib import nullcontext
+
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 import torch
 from flask import Flask, jsonify, request
@@ -49,8 +52,10 @@ print("Model loaded.", flush=True)
 
 
 def _inference_context():
-    if DEFAULT_DEVICE == "cuda":
-        return torch.autocast("cuda", dtype=torch.bfloat16)
+    if DEFAULT_DEVICE in {"cuda", "cpu"}:
+        return torch.autocast(DEFAULT_DEVICE, dtype=torch.bfloat16)
+    if DEFAULT_DEVICE == "mps":
+        return torch.autocast("mps", dtype=torch.float16)
     return nullcontext()
 
 

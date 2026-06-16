@@ -589,6 +589,8 @@ class SequenceGeometryEncoder(nn.Module):
     def _encode_points(self, points, points_mask, points_labels, img_feats):
         points_embed = None
         n_points, bs = points.shape[:2]
+        if n_points == 0:
+            return points.new_zeros((0, bs, self.d_model)), points_mask
 
         if self.points_direct_project is not None:
             proj = self.points_direct_project(points)
@@ -632,6 +634,8 @@ class SequenceGeometryEncoder(nn.Module):
     def _encode_boxes(self, boxes, boxes_mask, boxes_labels, img_feats):
         boxes_embed = None
         n_boxes, bs = boxes.shape[:2]
+        if n_boxes == 0:
+            return boxes.new_zeros((0, bs, self.d_model)), boxes_mask
 
         if self.boxes_direct_project is not None:
             proj = self.boxes_direct_project(boxes)
